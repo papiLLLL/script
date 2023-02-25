@@ -1,0 +1,89 @@
+#!/bin/bash
+#
+# File: run-multiple-aws-accounts
+# Summary: Run aws cli on multiple aws accounts.
+# Description:
+#  This script uses coinbase/assume-role to run aws cli on multiple aws accounts.
+# Usage:
+#   run-multiple-aws-accounts [aws cli]
+# Required:
+#   coinbase/assume-role: https://github.com/coinbase/assume-role  
+#   jq: https://stedolan.github.io/jq/
+
+readonly ROLE="view"
+readonly ACCOUNT_FILE="~/.aws/accounts"
+
+check() {
+  type jq > /dev/null 2>&1
+  if [[ ! $? = 0 ]]; then
+    echo "[ERROR] Not found jq."
+    return 1
+  fi
+
+  type assume-role > /dev/null 2>&1
+  if [[ ! $? = 0 ]]; then
+    echo "[ERROR] Not found assume-role."
+    return 1
+  fi
+
+  type aws > /dev/null 2>&1
+  if [[ ! $? = 0 ]]; then
+    echo "[ERROR] Not found aws cli."
+    return 1
+  fi
+
+  if [[ ! -e $ACCOUNT_FILE ]]; then
+    echo "[ERROR] Not found ${ACCOUNT_FILE}."
+    return 1
+  fi
+
+  if [[ -z $COMMAND ]]; then
+    echo "[ERROR] No specify argument."
+    return 1
+  fi
+
+  aws=$(echo $COMMAND | awk '{ print $1 }')
+  if [[ ! $aws = "aws" ]]; then
+    echo "[ERROR] Not aws cli."
+    return 1
+  fi
+
+  return 0
+}
+
+run() {
+  cat $ACCOUNT_FILE | jq -r ". | keys[]" | while read account; do
+    assume-role $account $ROLE
+    if [[ ! $? = 0 ]]; then
+      echo "[ERROR] Failed assume-role command"
+      return 1
+    fi
+
+    $COMMAND
+    if [[ ! $? = 0 ]]; then
+      echo "[ERROR] Failed aws cli."
+      return 1
+    fi
+  done
+
+  return 0
+}
+
+main() {
+  check
+  if [[  ! $? = 0 ]]; then
+    echo "[ERROR] Failed to check process."
+    exit 1
+  fi
+
+  run
+  if [[ ! $? = 0 ]]; then
+    echo "[ERROR] Failed to run process."
+    exit 1
+  fi
+
+  exit 0
+}
+
+readonly COMMAND=$@
+main
